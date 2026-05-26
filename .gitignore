@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# generated outputs — users run these themselves
+logs/
+plots/
+
+# ignore intermediate checkpoints, keep final model
+checkpoints/policy_ep*.pt
+
+# keep checkpoints/policy_final.pt tracked (users pull this and run demo.py)

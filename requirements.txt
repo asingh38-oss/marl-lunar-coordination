@@ -1,0 +1,6 @@
+pettingzoo[mpe]
+torch
+matplotlib
+pandas
+numpy
+pygame
