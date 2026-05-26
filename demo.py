@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # pull the repo, run this, done.
 # example: python demo.py --loss 0.2 --episodes 5 --replay
+# live window: python demo.py --render --episodes 3
 
 import argparse
 import numpy as np
@@ -16,7 +17,8 @@ parser.add_argument("--latency",     type=int,   default=0,    help="obs delay i
 parser.add_argument("--episodes",    type=int,   default=5,    help="number of episodes to run")
 parser.add_argument("--fault-agent", type=str,   default=None, help="agent to kill mid-episode (e.g. agent_0)")
 parser.add_argument("--fault-step",  type=int,   default=15,   help="step the fault happens")
-parser.add_argument("--replay",      action="store_true",      help="save a gif replay of episode 0")
+parser.add_argument("--replay",      action="store_true",      help="save a gif replay to plots/demo_replay.gif")
+parser.add_argument("--render",      action="store_true",      help="open live pygame window (press Q to quit)")
 parser.add_argument("--checkpoint",  type=str,   default="checkpoints/policy_final.pt")
 args = parser.parse_args()
 
@@ -33,11 +35,12 @@ policy.eval()
 print(f"loaded: {args.checkpoint}")
 print(f"running {args.episodes} episodes | loss={args.loss:.0%} | latency={args.latency} steps | fault={args.fault_agent or 'none'}\n")
 
-twin   = DigitalTwin()
+twin    = DigitalTwin()
 results = []
 
 for ep in range(args.episodes):
-    base_env    = simple_spread_v3.parallel_env(N=3, max_cycles=50, continuous_actions=False)
+    render_mode = "human" if args.render else "rgb_array"
+    base_env    = simple_spread_v3.parallel_env(N=3, max_cycles=50, continuous_actions=False, render_mode=render_mode)
     env         = LunarCommsWrapper(base_env, packet_loss=args.loss, latency_steps=args.latency)
     obs, _      = env.reset(seed=ep)
     total_r     = 0
@@ -58,6 +61,13 @@ for ep in range(args.episodes):
 
         obs, rewards, terms, truncs, _ = env.step(actions)
 
+        if args.render:
+            import pygame
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_q):
+                    pygame.quit()
+                    exit()
+
         agent_states = {
             a: {
                 "pos":    ob[:2].tolist(),
@@ -74,6 +84,7 @@ for ep in range(args.episodes):
             completed = True
             break
 
+    base_env.close()
     twin.commit_episode(ep, metadata={
         "packet_loss": args.loss, "latency": args.latency,
         "fault_agent": args.fault_agent, "completed": completed
