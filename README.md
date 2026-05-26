@@ -1,37 +1,33 @@
-# MARL Lunar Coordination Framework
+# marl-lunar-coordination
 
-Multi-agent reinforcement learning for autonomous rover coordination under lunar communication constraints. Three rovers learn to cooperatively cover target positions using a shared PPO policy, tested under degraded comms and mid-mission failures.
-
----
-
-## What this actually does
-
-The moon has no GPS and no reliable radio. Rovers communicating with each other or a base station will experience real packet loss and signal delay. Most MARL research assumes perfect observation. This doesn't.
-
-Three agents learn to cover three landmark positions using `simple_spread_v3` from PettingZoo MPE. In the live render, the **large blue dots are the landmarks** (fixed target positions) and the **small gray dots are the rovers** — your policy controls the gray ones and tries to get each one near a blue one.
-
-All three agents share one policy since they're homogeneous — training on one agent's experience applies to all of them. A comms wrapper sits between the environment and the agents and randomly drops or delays observations to simulate what a lunar radio link actually looks like. A digital twin logs full trajectories per episode and runs kinematic lookahead to predict collisions before they happen.
-
-The core question: **how much does coordination degrade as comms get worse, and is comms reliability or fleet size the bigger bottleneck when things go wrong?**
+PPO-trained agents that coordinate to cover target positions, tested under degraded comms and rover failures. Built as research for NASA Ames internship applications focused on autonomous multi-vehicle coordination.
 
 ---
 
-## Results
+## what it does
 
-| Condition | Mean Total Reward | Completion Rate |
-|-----------|:-----------------:|:---------------:|
-| No degradation (0%) | -140.95 | 100% |
+Three rovers learn to spread out and cover three target positions (landmarks) using multi-agent PPO with a shared policy. The interesting part is the communication wrapper -- you can simulate packet loss, observation delay, and mid-mission rover failure to see how coordination holds up.
+
+In the live render: **big blue dots = landmarks (stationary targets)**, **small gray dots = the rovers you're controlling**.
+
+The main question this tries to answer: is comms reliability or fleet size the bigger bottleneck when things go wrong on a lunar surface mission?
+
+---
+
+## results
+
+| condition | mean reward | completion |
+|-----------|:-----------:|:----------:|
+| no degradation | -140.95 | 100% |
 | 20% packet loss | -135.16 | 100% |
 | 40% packet loss | -139.70 | 100% |
-| Agent failure (N-1) | -136.99 | 100% |
+| agent failure (N-1) | -136.99 | 100% |
 
-**Key finding:** the trained policy is surprisingly robust to comms degradation — reward variance across all four conditions is under 6 points and completion rate stays at 100% regardless of packet loss or agent failure. For short-horizon cooperative navigation, the shared policy generalizes well even when agents are acting on stale or missing observations.
-
-Chart saved to `plots/results_comparison.png` after running `plot_results.py`.
+the policy ended up being pretty robust -- less than 6 points of reward variance across all conditions, 100% completion rate even with a dead rover. probably because the task horizon is short enough that stale observations don't matter much. higher loss rates (>60%) or longer latency windows would likely show more degradation.
 
 ---
 
-## Setup
+## setup
 
 ```bash
 git clone https://github.com/asingh38-oss/marl-lunar-coordination
@@ -43,89 +39,75 @@ source venv/bin/activate   # windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Six packages: `pettingzoo[mpe]`, `torch`, `matplotlib`, `pandas`, `numpy`, `pygame`. No Ray, no Stable Baselines, no dependency conflicts.
+requirements: `pettingzoo[mpe]`, `torch`, `matplotlib`, `pandas`, `numpy`, `pygame`
 
 ---
 
-## Quick demo (no training needed)
+## running it
 
-The trained model ships with the repo. Clone, install, and run immediately:
+trained model is already in the repo, no training needed
 
 ```bash
-# live pygame window -- large blue dots are landmarks, small gray dots are rovers
-# press Q to quit
+# live pygame window -- press Q to quit
 python demo.py --render --episodes 3
 
-# no window, just prints results to terminal
+# just print results, no window
 python demo.py --episodes 5
 
-# simulate bad lunar radio -- 40% of observations dropped
+# simulate 40% packet loss
 python demo.py --loss 0.4 --episodes 5
 
-# one rover dies at step 15, see if the other two recover
+# kill rover 0 at step 15
 python demo.py --fault-agent agent_0 --episodes 5
 
-# save an animated GIF replay to plots/demo_replay.gif
+# save a gif replay
 python demo.py --loss 0.2 --episodes 5 --replay
 
-# everything at once
-python demo.py --render --loss 0.2 --fault-agent agent_0 --fault-step 15 --episodes 3 --replay
+# worst case scenario
+python demo.py --render --loss 0.2 --fault-agent agent_0 --fault-step 15 --episodes 3
 ```
 
-### Demo flags
+flags:
 
-| Flag | Default | What it does |
+| flag | default | description |
 |------|---------|-------------|
-| `--render` | off | open live pygame window, press Q to quit |
-| `--loss` | `0.0` | packet loss rate (0.0 to 1.0) |
-| `--latency` | `0` | observation delay in steps |
-| `--episodes` | `5` | number of episodes to run |
-| `--fault-agent` | `None` | which rover to kill mid-episode (e.g. `agent_0`) |
-| `--fault-step` | `15` | step the fault happens |
-| `--replay` | off | save animated GIF to `plots/demo_replay.gif` |
-| `--checkpoint` | `checkpoints/policy_final.pt` | path to model weights |
+| `--render` | off | open live pygame window |
+| `--loss` | 0.0 | packet loss rate (0.0 to 1.0) |
+| `--latency` | 0 | observation delay in steps |
+| `--episodes` | 5 | number of episodes |
+| `--fault-agent` | None | rover to kill mid-episode (e.g. agent_0) |
+| `--fault-step` | 15 | step the fault happens |
+| `--replay` | off | save gif to plots/demo_replay.gif |
+| `--checkpoint` | checkpoints/policy_final.pt | model weights path |
 
 ---
 
-## Training from scratch
-
-If you want to retrain instead of using the included model:
+## training from scratch
 
 ```bash
 python train.py
 ```
 
-Trains for 3000 episodes using PPO with a shared actor-critic network. Updates every 10 episodes. Takes around 15-20 minutes on CPU. Saves checkpoints every 500 episodes to `checkpoints/` and a final `checkpoints/policy_final.pt` at the end. Training reward and loss log to `logs/training_log.csv`.
+3000 episodes, updates every 10. takes ~15-20 min on cpu. logs to `logs/training_log.csv`, saves checkpoints every 500 episodes.
 
-Watch the reward trend while it trains (open a second terminal):
-
+check progress mid-training:
 ```bash
-python -c "
-import pandas as pd
-df = pd.read_csv('logs/training_log.csv')
-print(df.dropna().tail(20)[['episode','reward']].to_string(index=False))
-"
+python -c "import pandas as pd; df = pd.read_csv('logs/training_log.csv'); print(df.dropna().tail(20)[['episode','reward']].to_string(index=False))"
 ```
-
-Reward starts very negative (random behavior) and slowly climbs. If it's improving by episode 500, it's working.
 
 ---
 
-## Full evaluation (reproducing the results table)
+## reproducing the benchmark
 
 ```bash
 python eval.py --loss 0.0  --episodes 30 --tag baseline
 python eval.py --loss 0.2  --episodes 30 --tag loss_20
 python eval.py --loss 0.4  --episodes 30 --tag loss_40
 python eval.py --loss 0.0  --fault-agent agent_0 --fault-step 15 --episodes 30 --tag fault
-
 python plot_results.py
 ```
 
-Each run saves a CSV to `logs/eval_{tag}.csv` and a twin trajectory log to `logs/twin_{tag}.json`.
-
-Replay any episode as a GIF:
-
+replay any episode:
 ```bash
 python twin.py 0 logs/twin_baseline.json
 python twin.py 0 logs/twin_baseline.json plots/replay_ep0.gif
@@ -133,53 +115,39 @@ python twin.py 0 logs/twin_baseline.json plots/replay_ep0.gif
 
 ---
 
-## File structure
+## files
 
 ```
 marl-lunar-coordination/
-├── demo.py             -- main entry point, load model and run any scenario
-├── train.py            -- PPO training loop + ActorCritic network definition
-├── eval.py             -- full evaluation with logging (for reproducing results)
-├── lunar_comms.py      -- comms degradation wrapper (packet loss + latency)
-├── twin.py             -- digital twin: trajectory logging, collision prediction, replay
-├── plot_results.py     -- generates comparison charts from eval CSVs
+├── demo.py             # main entry point
+├── train.py            # ppo training + actorcritic network
+├── eval.py             # evaluation with logging
+├── lunar_comms.py      # packet loss + latency wrapper
+├── twin.py             # digital twin: logging, collision prediction, replay
+├── plot_results.py     # bar charts from eval csvs
+├── stigmergy.py        # rule-based pheromone agent (marl vs stigmergy benchmark)
 ├── requirements.txt
 ├── .gitignore
 ├── checkpoints/
-│   └── policy_final.pt -- trained model weights (included, no training needed)
-├── logs/               -- CSVs and twin JSONs generated during eval
-└── plots/              -- output charts and replay GIFs
+│   └── policy_final.pt # trained weights, no training needed
+├── logs/
+└── plots/
 ```
 
 ---
 
-## How the PPO works
+## how the ppo works
 
-Single actor-critic network shared across all three agents. Each update cycle (every 10 episodes):
+all three agents share one network (parameter sharing -- they're identical so there's no reason to train separate policies). each update cycle collects 10 episodes worth of experience, computes per-agent discounted returns separately, then does 4 gradient steps with ppo clip objective. normalizing both advantages and returns was the key fix to stop the value loss from exploding.
 
-1. Collect rollouts -- each agent runs forward passes through the shared policy to get actions, log-probs, and value estimates. Per-agent returns are computed separately before being pooled into one shared batch.
-2. Normalize advantages and returns -- keeps the value loss from exploding
-3. PPO update -- 4 gradient steps with clipped surrogate objective (eps=0.2), value coefficient 0.5, entropy bonus 0.01 to keep exploration alive
-4. Gradient clipping at 0.5
+## how the comms wrapper works
 
-All three agents contribute to the same update batch, so each cycle generates 3x the data compared to training separate policies. This is parameter sharing -- the standard approach for homogeneous agent fleets.
+wraps the pettingzoo env and intercepts observations before they reach the agents. on each step: new obs goes into a per-agent buffer, agent receives the delayed version if latency > 0, and with probability `packet_loss` the delivered obs gets swapped for the agent's last known observation. not zeros -- stale data, which is what a real rover would actually have.
 
-## How the comms wrapper works
+## how the digital twin works
 
-`LunarCommsWrapper` wraps the PettingZoo env. On each step:
-
-- New observations go into a per-agent circular buffer (size = `latency_steps + 1`)
-- If `latency_steps > 0`, the agent receives the observation from that many steps ago instead of the current one
-- With probability `packet_loss`, the delivered observation is swapped out for the agent's last known observation -- not zeros, because a real rover would use stale data, not nothing
-
-An agent with 40% packet loss and 2-step latency is acting on information that's at minimum 2 steps old, and 40% of the time even older. That's close to what you'd actually see on a low-bandwidth lunar relay link.
-
-## How the digital twin works
-
-Every step during eval, the twin logs position, velocity, action, and reward for each agent. It also runs kinematic lookahead -- projects each agent 3 steps forward using current velocity and flags any pair predicted to get within the collision threshold before it actually happens. Trajectories save to JSON and replay as GIFs.
+logs position, velocity, action, and reward for every agent every step. also runs kinematic lookahead each step -- projects agents forward 3 steps using current velocity and flags any pair predicted to collide before it happens. saves to json, replays as gif.
 
 ---
 
-## Acknowledgments
-
-Built with assistance from Claude (Anthropic) for code structure, debugging, and project framing. All experiments, results, and analysis are my own.
+built with help from claude (anthropic) for code structure and debugging. experiments and analysis are my own.
