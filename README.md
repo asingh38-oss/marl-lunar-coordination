@@ -126,6 +126,7 @@ marl-lunar-coordination/
 ├── twin.py             # digital twin: logging, collision prediction, replay
 ├── plot_results.py     # bar charts from eval csvs
 ├── stigmergy.py        # rule-based pheromone agent (marl vs stigmergy benchmark)
+├── stigmergy.py        # rule-based pheromone agent (marl vs stigmergy benchmark)
 ├── requirements.txt
 ├── .gitignore
 ├── checkpoints/
@@ -135,6 +136,32 @@ marl-lunar-coordination/
 ```
 
 ---
+
+
+---
+
+## marl vs stigmergy
+
+ran a head-to-head between the trained ppo policy and a rule-based pheromone agent (stigmergy) across three conditions. stigmergy works by having each rover deposit a "scent trail" on cells it visits -- trails decay over time and rovers move toward the least-visited areas. no neural net, no training, just local rules.
+
+| condition | marl (ppo) | stigmergy (rule-based) |
+|-----------|:----------:|:----------------------:|
+| no degradation | -137.77 | -241.47 |
+| 40% packet loss | -141.41 | -244.95 |
+| agent failure (N-1) | -136.46 | -252.11 |
+
+findings:
+- marl outperforms stigmergy by ~75% across all conditions
+- both degrade almost identically under 40% packet loss (~2% drop each) -- the task is short-horizon enough that stale observations don't matter much for either approach
+- agent failure hits stigmergy harder (-252 vs -136) because stigmergy depends on all three rovers covering separate areas -- lose one and coverage drops noticeably
+- the comms robustness advantage for stigmergy (expected, since it doesn't use radio at all) didn't show up at this loss rate -- would likely emerge at >60% loss or with longer latency windows
+
+reproduce it:
+```bash
+python stigmergy.py
+```
+
+outputs `logs/stigmergy_benchmark.csv` and `plots/stigmergy_vs_marl.png`
 
 ## how the ppo works
 
